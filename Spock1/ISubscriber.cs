@@ -1,4 +1,4 @@
 ﻿public interface ISubscriber
 {
-    void notify(object o);
+    void receive(object o);
 }
