@@ -26,12 +26,14 @@ namespace Spock
 
 
         // MEMBERS
-        // The objects waiting to be published
+        // The object waiting to be published
         private readonly object currentObjectLock = new object();
         private object currentObject;
+
         // Dictionary {objectType: [interested remotes]}
         private readonly object objectToRemoteClientLock = new object();
         private Hashtable objectToRemoteClient = new Hashtable();
+
         // Dictionary {objectType: [local subscribers]}
         private readonly object objectToLocalClientLock = new object();
         private Hashtable objectToLocalClient = new Hashtable();
@@ -74,7 +76,7 @@ namespace Spock
         }
 
 
-        // ACCESSORS
+        // SINGLETON
         public static Node Instance
         {
             get
@@ -85,6 +87,7 @@ namespace Spock
 
 
         // IMPLEMENTATION
+        // PRIVATE
         private byte[] readExactSize(Socket s, int size)
         {
             byte[] buffer = new byte[size];
@@ -95,106 +98,6 @@ namespace Spock
 
             return buffer;
         }
-
-
-
-        /**
-         * Listen for a TCP transmission, either a request or an object
-         */
-        public void listenForRequest()
-        {
-            Debug.Print("Listening for request");
-            while (true)
-            {
-                try
-                {
-                    using (Socket clientSocket = socketReceive.Accept())
-                    {
-                        Debug.Print("New connection");
-                        //Get client's IP
-                        IPEndPoint clientIP = clientSocket.RemoteEndPoint as IPEndPoint;
-                        EndPoint clientEndPoint = clientSocket.RemoteEndPoint;
-
-                        // Read the message size
-                        int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)));
-                        Debug.Print("Receiving a message of " + msgSize.ToString() + "B");
-
-                        // Read the message itself
-                        byte[] msg = readExactSize(clientSocket, msgSize);
-                            
-                        string request = new string(System.Text.Encoding.UTF8.GetChars(msg));
-                        Debug.Print(request);
-
-                        //Compose a response
-                        Debug.Print("Sending a response");
-                        byte[] response = System.Text.Encoding.UTF8.GetBytes("tableau de char");
-                        clientSocket.Send(response, response.Length, SocketFlags.None);
-                    }
-                }
-                catch(Exception e)
-                {
-                    Debug.Print(e.StackTrace);
-                    Debug.Print(e.Message);
-                }
-            }
-        }
-
-
-
-        /**
-         * Send the object o to the remote client at IPAddress
-         */
-        private void sendObject(string IPAddress, Object o)
-        {
-
-            int startTime = System.DateTime.Now.Millisecond;
-            byte[] toSend = { }; // TODO : serialize o
-            int sent = 0;
-            int nbTries = 0;
-
-            while (sent < toSend.Length)
-            {
-                if (System.DateTime.Now.Millisecond > startTime + TCP_TIMEOUT)
-                    return;
-                try
-                {
-                    sent += socketSend.Send(toSend, sent, toSend.Length - sent, SocketFlags.None);
-                }
-                catch (SocketException ex)
-                {
-                    if (nbTries < TCP_MAX_TRIES)
-                    {
-                        nbTries++;
-                        Thread.Sleep(30);
-                    }
-                    else
-                        throw ex;
-                }
-            }
-        }
-
-
-
-        public void broadcast()
-        {
-            try
-            {
-                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true); // Enable broadcast 
-
-                byte[] data = Encoding.UTF8.GetBytes("hello from netduino\n");
-                socket.SendTo(data, data.Length, SocketFlags.None, new IPEndPoint(IPAddress.Parse("255.255.255.255"), 1234));
-                Thread.Sleep(1000);
-
-                socket.Close();
-            }
-            catch (Exception e)
-            {
-                Debug.Print(e.StackTrace);
-                Debug.Print(e.Message);
-            }
-        }
-
 
 
         /**
@@ -263,14 +166,54 @@ namespace Spock
             string className = o.GetType().Name;
             Debug.Print("We juste received a " + className + " from the network");
 
-            // Transmit to the concerned remotes
+            // Transmit to the concerned locals
+            deliverToLocals(o);
+        }
+
+
+
+        /**
+         * Dictribute the object o to all the concerned locals clients
+         */
+        private void deliverToLocals(Object o)
+        {
+            string className = o.GetType().Name;
             lock (objectToLocalClientLock)
             {
-                ArrayList remotesList = (ArrayList)objectToLocalClient[className];
-                foreach (ISubscriber s in remotesList)
-                    s.receive(o);
+                ArrayList localsList = (ArrayList)objectToLocalClient[className];
+                if (localsList == null || localsList.Count == 0)
+                    Debug.Print("No local cares about your stupid " + className + "!");
+                else
+                    foreach (ISubscriber s in localsList)
+                    {
+                        Debug.Print("Notifying a local of a " + className);
+                        s.receive(o);
+                    }
             }
         }
+
+
+
+        /**
+         * Dictribute the object o to all the concerned remotes clients
+         */
+        private void deliverToRemotes(object o)
+        {
+            string className = o.GetType().Name;
+            lock (objectToRemoteClientLock)
+            {
+                ArrayList remotesList = (ArrayList)objectToRemoteClient[className];
+                if (remotesList == null || remotesList.Count == 0)
+                    Debug.Print("No remote cares about your stupid " + className + "!");
+                else
+                    foreach (string address in remotesList)
+                    {
+                        Debug.Print("Notifying " + address + " of a " + className);
+                        sendObject(address, o);
+                    }
+            }
+        }
+
 
 
         /**
@@ -279,21 +222,188 @@ namespace Spock
         private void receiveFromLocal(Object o)
         {
             string className = o.GetType().Name;
-            Debug.Print("We juste received a " + className + " from the local client");
+            Debug.Print("We distribute a " + className + " from the local client");
 
-            // Transmit to the concerned remotes
-            lock (objectToRemoteClientLock)
+            // Transmit to the concerned local...
+            deliverToLocals(o);
+            // ...then to the concerned remotes
+            deliverToRemotes(o);
+        }
+
+
+        /**
+         * Send the object o to the remote client at IPAddress
+         */
+        private void sendObject(string IPAddress, Object o)
+        {
+
+            int startTime = System.DateTime.Now.Millisecond;
+            byte[] toSend = { }; // TODO : serialize o
+            int sent = 0;
+            int nbTries = 0;
+
+            while (sent < toSend.Length)
             {
-                ArrayList remotesList = (ArrayList)objectToRemoteClient[className];
-                foreach (string address in remotesList)
-                    sendObject(address, o);
+                if (System.DateTime.Now.Millisecond > startTime + TCP_TIMEOUT)
+                    return;
+                try
+                {
+                    sent += socketSend.Send(toSend, sent, toSend.Length - sent, SocketFlags.None);
+                }
+                catch (SocketException ex)
+                {
+                    if (nbTries < TCP_MAX_TRIES)
+                    {
+                        nbTries++;
+                        Thread.Sleep(30);
+                    }
+                    else
+                        throw ex;
+                }
             }
         }
 
 
-        public static void Main()
+        /**
+         * We got a new local subscriber for t, we got to ask for some t in the network
+         */
+        private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
-            Node node = new Node();
+            // TODO
+        }
+
+
+        /**
+         * Take in account a new local subscriber
+         */
+        private void locallySubscribe(ISubscriber subscriber, Type t)
+        {
+            lock (objectToLocalClientLock)
+            {
+                ArrayList currentClients = (ArrayList)objectToLocalClient[t.Name];
+                
+                if (currentClients == null)
+                    currentClients = new ArrayList();
+                currentClients.Add(subscriber);
+
+                objectToLocalClient[t.Name] = currentClients;
+            }
+        }
+
+
+        
+        /**
+         * If only subscriber asks for t, we need to tell the network it's over for us
+         */
+        private void remotelyUnsubscribe(ISubscriber subscriber, Type t)
+        {
+            // TODO
+        }
+
+
+
+        /**
+         * subscriber doesn't ask for t anymore
+         */
+        private void locallyUnsubscribe(ISubscriber subscriber, Type t)
+        {
+            lock (objectToLocalClientLock)
+            {
+                ArrayList a = (ArrayList)objectToLocalClient[t.Name];
+                a.Remove(subscriber);
+                objectToLocalClient[t.Name] = a;
+                //((ArrayList)objectToLocalClient[t.Name]).Remove(subscriber);
+            }
+        }
+
+
+
+        // PUBLIC
+        /**
+         * Listen for a TCP transmission, either a request or an object
+         */
+        public void listenForRequest()
+        {
+            Debug.Print("Listening for request");
+            while (true)
+            {
+                try
+                {
+                    using (Socket clientSocket = socketReceive.Accept())
+                    {
+                        Debug.Print("New connection");
+                        //Get client's IP
+                        IPEndPoint clientIP = clientSocket.RemoteEndPoint as IPEndPoint;
+                        EndPoint clientEndPoint = clientSocket.RemoteEndPoint;
+
+                        // Read the message size
+                        int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)));
+                        Debug.Print("Receiving a message of " + msgSize.ToString() + "B");
+
+                        // Read the message itself
+                        byte[] msg = readExactSize(clientSocket, msgSize);
+
+                        string request = new string(System.Text.Encoding.UTF8.GetChars(msg));
+                        Debug.Print(request);
+
+                        //Compose a response
+                        Debug.Print("Sending a response");
+                        byte[] response = System.Text.Encoding.UTF8.GetBytes("tableau de char");
+                        clientSocket.Send(response, response.Length, SocketFlags.None);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.Print(e.StackTrace);
+                    Debug.Print(e.Message);
+                }
+            }
+        }
+
+
+        public void broadcast()
+        {
+            try
+            {
+                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true); // Enable broadcast 
+
+                byte[] data = Encoding.UTF8.GetBytes("hello from netduino\n");
+                socket.SendTo(data, data.Length, SocketFlags.None, new IPEndPoint(IPAddress.Parse("255.255.255.255"), 1234));
+                Thread.Sleep(1000);
+
+                socket.Close();
+            }
+            catch (Exception e)
+            {
+                Debug.Print(e.StackTrace);
+                Debug.Print(e.Message);
+            }
+        }
+
+
+        public void publish(Object o)
+        {
+            receiveFromLocal(o);
+        }
+
+
+
+        public void subscribe(Type t, ISubscriber subscriber)
+        {
+            // We care about what's happening on our node
+            locallySubscribe(subscriber, t);
+            // But also in the neighbourhood (we're not some kind of introvert)
+            remotelySubscribe(subscriber, t);
+        }
+
+
+
+        public void unsubscribe(Type t, ISubscriber subscriber)
+        {
+            // same as subscribe, but the other way around
+            locallyUnsubscribe(subscriber, t);
+            remotelyUnsubscribe(subscriber, t);
         }
     }
 }

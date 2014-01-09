@@ -6,17 +6,25 @@ namespace Spock
 {
     class TestSubscriber : ISubscriber
     {
-        public static void main()
+        public void test()
         {
-            Node node = Node.Instance;
+            try
+            {
+                Node node = Node.Instance;
 
-            Debug.Print("Subscribing to string");
-            node.subscribe("".GetType().Name, this);
+                Debug.Print("Subscribing to string");
+                node.subscribe("".GetType(), this);
 
-            Thread.Sleep(3000);
+                Thread.Sleep(3000);
 
-            Debug.Print("Unsubscribing to string");
-            node.unsubscribe("".GetType().Name, this);
+                Debug.Print("Unsubscribing to string");
+                node.unsubscribe("".GetType(), this);
+            }
+            catch (Exception e)
+            {
+                Debug.Print(e.Message);
+                Debug.Print(e.StackTrace);
+            }
         }
 
         public void receive(Object o)
