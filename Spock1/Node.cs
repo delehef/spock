@@ -19,10 +19,14 @@ namespace Spock
         private static readonly Node instance = new Node();
 
         // CONSTANTS
-        private const int BROADCAST_MSG_SIZE = 9;
+        private const int BROADCAST_MSG_MAX_SIZE = 1000;
+        private const int BROADCAST_MSG_HEADER_SIZE = 1 + 4; // 1 + 4 => 1: operation, 4: sender IP
+        private const int BROADCAST_MSG_MIN_SIZE = BROADCAST_MSG_HEADER_SIZE + 1;
         private const int PAYLOAD_OFFSET = 5;
         private const int TCP_MAX_TRIES = 5;
         private const int TCP_TIMEOUT = 10000;
+        private const int TCP_PORT = 4321;
+        private const int UDP_PORT = 1234;
 
 
         // MEMBERS
@@ -31,12 +35,16 @@ namespace Spock
         private object currentObject;
 
         // Dictionary {objectType: [interested remotes]}
-        private readonly object objectToRemoteClientLock = new object();
-        private Hashtable objectToRemoteClient = new Hashtable();
+        private readonly object typeToRemoteClientLock = new object();
+        private Hashtable typeToRemoteClient = new Hashtable();
 
         // Dictionary {objectType: [local subscribers]}
-        private readonly object objectToLocalClientLock = new object();
-        private Hashtable objectToLocalClient = new Hashtable();
+        private readonly object typeToLocalClientLock = new object();
+        private Hashtable typeToLocalClient = new Hashtable();
+
+        // Dictionary {objectType: [local subscribers]}
+        private readonly object typeToLocalSubscriberCountLock = new object();
+        private Hashtable typeToLocalSubscriberCount = new Hashtable();
 
         Socket socketSend;     // used to send requests or objects over TCP
         Socket socketReceive;  // used to receive requests or objects
@@ -51,17 +59,13 @@ namespace Spock
             Debug.Print("DHCP Enabled: " + net.IsDhcpEnabled);
             Debug.Print("IP Address: " + net.IPAddress);
 
-
-            Thread broadThread = new Thread(new ThreadStart(broadcast));
-            //broadThread.Start();
-
             Thread listenThread = new Thread(new ThreadStart(listenBroadcast));
             listenThread.Start();
 
             try
             {
                 socketReceive = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                socketReceive.Bind(new IPEndPoint(IPAddress.Any, 4321));
+                socketReceive.Bind(new IPEndPoint(IPAddress.Any, TCP_PORT));
                 socketReceive.Listen(100); // param : size of the pending connections queue
             }
             catch (Exception e)
@@ -101,59 +105,82 @@ namespace Spock
 
 
         /**
+         * Broadcast 
+         */
+        private void broadcast(int op, byte[] payload)
+        {
+            try
+            {
+                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true); // Enable broadcast
+
+                byte[] data = new byte[BROADCAST_MSG_HEADER_SIZE + payload.Length];
+                socket.SendTo(data, data.Length, SocketFlags.None, new IPEndPoint(IPAddress.Parse("255.255.255.255"), UDP_PORT));
+                Thread.Sleep(1000);
+                socket.Close();
+            }
+            catch (Exception e)
+            {
+                Debug.Print(e.StackTrace);
+                Debug.Print(e.Message);
+            }
+        }
+
+
+
+        /**
          * Listen the broadcast requests and process them
          */
         private void listenBroadcast()
         {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            EndPoint ep = (EndPoint)(new IPEndPoint(IPAddress.Any, 1234));
+            EndPoint ep = (EndPoint)(new IPEndPoint(IPAddress.Any, UDP_PORT));
             socket.Bind(ep);
 
-            bool isAlive = true;
-            try
+            bool stayAlive = true;
+            byte[] buffer = new byte[BROADCAST_MSG_MAX_SIZE];
+            while (stayAlive)
             {
-                while (isAlive)
+                try
                 {
-                    string msg = "";
-                    if (socket.Available >= BROADCAST_MSG_SIZE)
+                    int nbReceived = socket.ReceiveFrom(buffer, ref ep);
+                    if (nbReceived == -1 || nbReceived < BROADCAST_MSG_MIN_SIZE) // Error receiving the datagram
+                        continue;
+
+                    String msg = new string(Encoding.UTF8.GetChars(buffer));
+                    Debug.Print("\nReceived data: " + msg + " for " + nbReceived + " B");
+                    switch (buffer[0])
                     {
-                        byte[] buffer = new byte[BROADCAST_MSG_SIZE];
-                        // Read the first byte, aka type of message
-                        int nbReceived = socket.Receive(buffer, 9, SocketFlags.None);
-                        msg = new string(Encoding.UTF8.GetChars(buffer));
-                        Debug.Print("\nReceived data: " + msg + " for " + nbReceived.ToString() + "B");
-                        switch (buffer[0])
-                        {
-                            //  asks for a type of object
-                            case (byte)'A':
-                                {
-                                    string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
-                                    int objectType = BitConverter.ToInt32(buffer, PAYLOAD_OFFSET);
-                                    Debug.Print(IP + " asks for the object #" + objectType);
-                                    break;
-                                }
-
-
-                            // offer a type of object
-                            case (byte)'O':
-                                {
-                                    string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
-                                    int objectType = BitConverter.ToInt32(buffer, 5);
-                                    Debug.Print(IP + " offers the object #" + objectType);
-                                    break;
-                                }
-
-                            default:
-                                Debug.Print("Unknown command : " + buffer[0].ToString());
+                        // asks for a type of object
+                        case (byte)'A':
+                            {
+                                string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
+                                int objectType = BitConverter.ToInt32(buffer, PAYLOAD_OFFSET);
+                                Debug.Print(IP + " asks for the object #" + objectType);
                                 break;
-                        }
+                            }
+
+
+                        // offers a type of object
+                        case (byte)'O':
+                            {
+                                string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
+                                int objectType = BitConverter.ToInt32(buffer, 5);
+                                Debug.Print(IP + " offers the object #" + objectType);
+                                break;
+                            }
+
+                        default:
+                            Debug.Print("Unknown command : " + buffer[0].ToString());
+                            break;
                     }
-                    Thread.Sleep(500);
                 }
-            }
-            catch (Exception exc)
-            {
-                Debug.Print("Exception received while listening to broadcast: " + exc.Message);
+                catch (Exception e)
+                {
+                    Debug.Print("Exception received while listening to broadcast: " + e.Message);
+                    Debug.Print(e.StackTrace);
+                }
+                Thread.Sleep(500);
             }
         }
 
@@ -178,9 +205,9 @@ namespace Spock
         private void deliverToLocals(Object o)
         {
             string className = o.GetType().Name;
-            lock (objectToLocalClientLock)
+            lock (typeToLocalClientLock)
             {
-                ArrayList localsList = (ArrayList)objectToLocalClient[className];
+                ArrayList localsList = (ArrayList)typeToLocalClient[className];
                 if (localsList == null || localsList.Count == 0)
                     Debug.Print("No local cares about your stupid " + className + "!");
                 else
@@ -200,9 +227,9 @@ namespace Spock
         private void deliverToRemotes(object o)
         {
             string className = o.GetType().Name;
-            lock (objectToRemoteClientLock)
+            lock (typeToRemoteClientLock)
             {
-                ArrayList remotesList = (ArrayList)objectToRemoteClient[className];
+                ArrayList remotesList = (ArrayList)typeToRemoteClient[className];
                 if (remotesList == null || remotesList.Count == 0)
                     Debug.Print("No remote cares about your stupid " + className + "!");
                 else
@@ -233,6 +260,7 @@ namespace Spock
 
         /**
          * Send the object o to the remote client at IPAddress
+         * TODO
          */
         private void sendObject(string IPAddress, Object o)
         {
@@ -266,10 +294,19 @@ namespace Spock
 
         /**
          * We got a new local subscriber for t, we got to ask for some t in the network
+         * TODO
          */
         private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
-            // TODO
+            lock (typeToLocalSubscriberCountLock)
+            {
+                if (typeToLocalSubscriberCount[t.Name] != null)
+                    typeToLocalSubscriberCount[t.Name] = (int)typeToLocalSubscriberCount[t.Name] + 1;
+                else
+                    typeToLocalSubscriberCount[t.Name] = 1;
+            }
+
+            //broadcast(Encoding.UTF8.GetBytes(t.GetType().Name));
         }
 
 
@@ -278,22 +315,23 @@ namespace Spock
          */
         private void locallySubscribe(ISubscriber subscriber, Type t)
         {
-            lock (objectToLocalClientLock)
+            lock (typeToLocalClientLock)
             {
-                ArrayList currentClients = (ArrayList)objectToLocalClient[t.Name];
-                
+                ArrayList currentClients = (ArrayList)typeToLocalClient[t.Name];
+
                 if (currentClients == null)
                     currentClients = new ArrayList();
                 currentClients.Add(subscriber);
 
-                objectToLocalClient[t.Name] = currentClients;
+                typeToLocalClient[t.Name] = currentClients;
             }
         }
 
 
-        
+
         /**
          * If only subscriber asks for t, we need to tell the network it's over for us
+         * TODO
          */
         private void remotelyUnsubscribe(ISubscriber subscriber, Type t)
         {
@@ -307,22 +345,18 @@ namespace Spock
          */
         private void locallyUnsubscribe(ISubscriber subscriber, Type t)
         {
-            lock (objectToLocalClientLock)
+            lock (typeToLocalClientLock)
             {
-                ArrayList a = (ArrayList)objectToLocalClient[t.Name];
-                a.Remove(subscriber);
-                objectToLocalClient[t.Name] = a;
-                //((ArrayList)objectToLocalClient[t.Name]).Remove(subscriber);
+                ((ArrayList)typeToLocalClient[t.Name]).Remove(subscriber);
             }
         }
 
 
 
-        // PUBLIC
         /**
          * Listen for a TCP transmission, either a request or an object
          */
-        public void listenForRequest()
+        private void listenForRequest()
         {
             Debug.Print("Listening for request");
             while (true)
@@ -361,27 +395,10 @@ namespace Spock
         }
 
 
-        public void broadcast()
-        {
-            try
-            {
-                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true); // Enable broadcast 
-
-                byte[] data = Encoding.UTF8.GetBytes("hello from netduino\n");
-                socket.SendTo(data, data.Length, SocketFlags.None, new IPEndPoint(IPAddress.Parse("255.255.255.255"), 1234));
-                Thread.Sleep(1000);
-
-                socket.Close();
-            }
-            catch (Exception e)
-            {
-                Debug.Print(e.StackTrace);
-                Debug.Print(e.Message);
-            }
-        }
-
-
+        // PUBLIC
+        /**
+         * What to do when a local subscriber publish an object
+         */
         public void publish(Object o)
         {
             receiveFromLocal(o);
