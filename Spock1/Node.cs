@@ -127,6 +127,12 @@ namespace Spock
         }
 
 
+        private byte[] getSubBytes(byte[] source, int beginning)
+        {
+            byte[] r = new byte[source.Length - beginning];
+            Array.Copy(source, beginning, r, 0, r.Length);
+            return r;
+        }
 
         /**
          * Listen the broadcast requests and process them
@@ -155,8 +161,8 @@ namespace Spock
                         case (byte)'A':
                             {
                                 string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
-                                int objectType = BitConverter.ToInt32(buffer, PAYLOAD_OFFSET);
-                                Debug.Print(IP + " asks for the object #" + objectType);
+                                string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+                                Debug.Print(IP + " asks for the type " + type);
                                 break;
                             }
 
@@ -165,8 +171,8 @@ namespace Spock
                         case (byte)'O':
                             {
                                 string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
-                                int objectType = BitConverter.ToInt32(buffer, 5);
-                                Debug.Print(IP + " offers the object #" + objectType);
+                                string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+                                Debug.Print(IP + " offers the type " + type);
                                 break;
                             }
 
