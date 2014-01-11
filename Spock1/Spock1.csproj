@@ -34,6 +34,7 @@
   <Import Project="$(NetMfTargetsBaseDir)$(TargetFrameworkVersion)\CSharp.Targets" />
   <ItemGroup>
     <Compile Include="ISubscriber.cs" />
+    <Compile Include="NodeNetworkLayer.cs" />
     <Compile Include="Stopwatch.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Node.cs" />
