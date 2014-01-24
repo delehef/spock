@@ -26,8 +26,8 @@ namespace Spock
 
         private const int TCP_PORT = 4321;
         private const int TCP_MAX_TRIES = 5;
-        private const int TCP_TIMEOUT = 10000;
-        private const byte TCP_COMMAND_ACCEPT = (byte)'A';
+        private const int TCP_TIMEOUT = 30000;
+        private const byte TCP_COMMAND_ACCEPT_TYPE = (byte)'A';
         private const byte TCP_COMMAND_OBJECT = (byte)'O';
 
         /**
@@ -79,6 +79,16 @@ namespace Spock
         }
 
         /**
+         * Returns a byte[] containing source[beginning..end]
+         */
+        private byte[] getSubBytes(byte[] source, int beginning, int end)
+        {
+            byte[] r = new byte[end - beginning];
+            Array.Copy(source, beginning, r, 0, r.Length);
+            return r;
+        }
+
+        /**
          * Listen the broadcast requests and process them
          */
         private void listenBroadcast()
@@ -123,7 +133,7 @@ namespace Spock
                                     if (count != null && (int)count > 0)
                                     {
                                         Debug.Print("We'll accept " + type);
-                                        sendTCPCommand(IP, TCP_COMMAND_ACCEPT, Encoding.UTF8.GetBytes(type));
+                                        sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(type));
                                     }
                                     else
                                         Debug.Print("We don't need " + type);
@@ -148,7 +158,7 @@ namespace Spock
 
 
         /**
-         * Listen for a TCP transmission, either a request or an object
+         * Listen for a TCP transmission, either a request or an object // TODO
          */
         private void listenForRequest()
         {
@@ -170,9 +180,32 @@ namespace Spock
 
                         // Read the message itself
                         byte[] msg = readExactSize(clientSocket, msgSize);
-
                         string request = new string(System.Text.Encoding.UTF8.GetChars(msg));
-                        Debug.Print(request);
+                        Debug.Print("Message : " + request);
+
+                        switch (msg[0])
+                        {
+                            case TCP_COMMAND_ACCEPT_TYPE:
+                                {
+                                    string ip = msg[1] + "." + msg[2] + "." + msg[3] + "." + msg[4];
+                                    string type = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 5)));
+                                    Debug.Print(ip + " needs " + type);
+                                    break;
+                                }
+
+                            case TCP_COMMAND_OBJECT:
+                                {
+                                    byte typeStringLen = msg[1];
+                                    string typeString = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 2, 2+typeStringLen)));
+                                    int objectBytesBeginning = typeStringLen + 2;
+                                    Debug.Print("Receiving an object of type " + typeString);
+                                    break;
+                                }
+
+                            default:
+                                Debug.Print("Received unknown TCP command : " + msg[0]);
+                                break;
+                        }
 
                         //Compose a response
                         Debug.Print("Sending a response");
@@ -189,22 +222,33 @@ namespace Spock
         }
 
 
+        /**
+         * Package the payload then send it to the specified IP on port TCP_PORT
+         */
         private void sendTCP(string destIP, byte[] payload)
         {
             int startTime = System.DateTime.Now.Millisecond;
             int sent = 0;
             int nbTries = 0;
 
+            byte[] packet = new byte[sizeof(int) + payload.Length];
+            byte[] sizeBytes = BitConverter.GetBytes(payload.Length);
+            Debug.Assert(sizeBytes.Length == sizeof(int)); // Who knows... anyway, there will be a problem if one of the machines 
+                                                           // has sizeof(int) != sizeof(UInt32), but should'nt be allowed according to MSDN
+
+            Array.Copy(sizeBytes, 0, packet, 0, sizeBytes.Length);              // Add the packet's size...
+            Array.Copy(payload, 0, packet, sizeBytes.Length, payload.Length);   // ...then the packet's payload
+
             socketSend = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             socketSend.Connect(new IPEndPoint(System.Net.IPAddress.Parse(destIP), TCP_PORT));
 
-            while (sent < payload.Length)
+            while (sent < packet.Length)
             {
                 if (System.DateTime.Now.Millisecond > startTime + TCP_TIMEOUT)
                     return;
                 try
                 {
-                    sent += socketSend.Send(payload, sent, payload.Length - sent, SocketFlags.None);
+                    sent += socketSend.Send(packet, sent, packet.Length - sent, SocketFlags.None);
                 }
                 catch (SocketException ex)
                 {
@@ -214,14 +258,19 @@ namespace Spock
                         Thread.Sleep(30);
                     }
                     else
+                    {
+                        socketSend.Close();
                         throw ex;
+                    }
                 }
             }
 
+            socketSend.Close();
         }
 
+
         /**
-         * Send a request to a remote node
+         * Send an operation
          */
         private void sendTCPCommand(string destIP, byte op, byte[] payload)
         {
