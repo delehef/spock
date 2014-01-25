@@ -31,9 +31,9 @@ namespace Spock
         private readonly object typeToLocalClientSubscriber = new object();
         private Hashtable typeToLocalSubscriber = new Hashtable();
 
-        // Dictionary {objectType: [local subscribers]}
+        // Dictionary {objectType: [count of local subscribers]}
         private readonly object typeToLocalSubscriberCountLock = new object();
-        private Hashtable typeToLocalSubscriberCount = new Hashtable();
+        private Hashtable typeToLocalSubscriberCount = new Hashtable();         // Useless ?
 
         Socket socketSend;     // used to send requests or objects over TCP
         Socket socketReceive;  // used to receive requests or objects

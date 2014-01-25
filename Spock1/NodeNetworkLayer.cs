@@ -28,6 +28,7 @@ namespace Spock
         private const int TCP_MAX_TRIES = 5;
         private const int TCP_TIMEOUT = 30000;
         private const byte TCP_COMMAND_ACCEPT_TYPE = (byte)'A';
+        private const byte TCP_COMMAND_OFFERS_TYPE = (byte)'B';
         private const byte TCP_COMMAND_OBJECT = (byte)'O';
 
         /**
@@ -111,17 +112,28 @@ namespace Spock
                     Debug.Print("\nReceived data: " + msg + " for " + nbReceived + " B");
                     switch (buffer[0])
                     {
-                        // asks for a type of object
+                        // Someone asks for a type of object
                         case UDP_COMMAND_ASKSFOR:
                             {
                                 string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
                                 string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
                                 Debug.Print(IP + " asks for the type " + type);
+                                lock (typeToRemoteSubscriberLock)
+                                {
+                                    ArrayList currentRemotes = (ArrayList)typeToLocalSubscriber[type];
+
+                                    if (currentRemotes == null)
+                                        currentRemotes = new ArrayList();
+                                    currentRemotes.Add(IP);
+
+                                    typeToLocalSubscriber[type] = currentRemotes;
+                                }
+
                                 break;
                             }
 
 
-                        // offers a type of object
+                        // Someone offers a type of object
                         case UDP_COMMAND_OFFERS:
                             {
                                 string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
@@ -172,7 +184,6 @@ namespace Spock
                         Debug.Print("New connection");
                         //Get client's IP
                         IPEndPoint clientIP = clientSocket.RemoteEndPoint as IPEndPoint;
-                        EndPoint clientEndPoint = clientSocket.RemoteEndPoint;
 
                         // Read the message size
                         int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)));
@@ -185,20 +196,40 @@ namespace Spock
 
                         switch (msg[0])
                         {
-                            case TCP_COMMAND_ACCEPT_TYPE:
+                            case TCP_COMMAND_ACCEPT_TYPE:   // Someone needs something we got
                                 {
-                                    string ip = msg[1] + "." + msg[2] + "." + msg[3] + "." + msg[4];
-                                    string type = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 5)));
-                                    Debug.Print(ip + " needs " + type);
+                                    string type = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
+                                    Debug.Print(clientIP + " needs " + type);
+                                    lock (typeToRemoteSubscriberLock)
+                                    {
+                                        ArrayList currentRemotes = (ArrayList)typeToRemoteSubscriber[type];
+
+                                        if (currentRemotes == null)
+                                            currentRemotes = new ArrayList();
+                                        currentRemotes.Add(clientIP);
+
+                                        typeToRemoteSubscriber[type] = currentRemotes;
+                                    }
                                     break;
                                 }
 
-                            case TCP_COMMAND_OBJECT:
+                            // Probably obsolete
+                            case TCP_COMMAND_OFFERS_TYPE:   // Someone received our UDP demand and offers us what we need
+                                {
+                                    string type = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
+                                    // TODO : check we still need it
+                                    sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(type));
+                                    break;
+                                }
+
+                            case TCP_COMMAND_OBJECT:        // Someone give us an object
                                 {
                                     byte typeStringLen = msg[1];
                                     string typeString = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 2, 2+typeStringLen)));
                                     int objectBytesBeginning = typeStringLen + 2;
                                     Debug.Print("Receiving an object of type " + typeString);
+                                    Object o = null; // TODO
+                                    receiveFromNetwork(o);
                                     break;
                                 }
 
