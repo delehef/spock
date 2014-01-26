@@ -23,6 +23,7 @@ namespace Spock
         private const int BROADCAST_MSG_PAYLOAD_OFFSET = 5;
         private const byte UDP_COMMAND_ASKSFOR = (byte)'A';
         private const byte UDP_COMMAND_OFFERS = (byte)'O';
+        private const byte UDP_COMMAND_DONTNEED = (byte)'D';
 
         private const int TCP_PORT = 4321;
         private const int TCP_MAX_TRIES = 5;
@@ -49,14 +50,20 @@ namespace Spock
         /**
          * Broadcast
          */
-        private void broadcast(int op, byte[] payload)
+        private void broadcast(byte op, byte[] payload)
         {
             try
             {
+                byte[] data = new byte[BROADCAST_MSG_HEADER_SIZE + payload.Length];
+                byte[] IPbytes = IPAddress.Parse(NetworkInterface.GetAllNetworkInterfaces()[0].IPAddress).GetAddressBytes();
+                Debug.Assert(IPbytes.Length == 4);
+
+                data[0] = op;                                                               // Set the opcode
+                Array.Copy(IPbytes, 0, data, 1, IPbytes.Length);                            // Set the IP
+                Array.Copy(payload, 0, data, BROADCAST_MSG_HEADER_SIZE, payload.Length);    // Add the payload
+
                 Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true); // Enable broadcast
-
-                byte[] data = new byte[BROADCAST_MSG_HEADER_SIZE + payload.Length];
                 socket.SendTo(data, data.Length, SocketFlags.None, new IPEndPoint(IPAddress.Parse("255.255.255.255"), UDP_PORT));
                 Thread.Sleep(1000);
                 socket.Close();
@@ -79,6 +86,7 @@ namespace Spock
             return r;
         }
 
+
         /**
          * Returns a byte[] containing source[beginning..end]
          */
@@ -89,10 +97,11 @@ namespace Spock
             return r;
         }
 
+
         /**
          * Listen the broadcast requests and process them
          */
-        private void listenBroadcast()
+        private void listenForUDPRequest()
         {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             EndPoint ep = (EndPoint)(new IPEndPoint(IPAddress.Any, UDP_PORT));
@@ -108,14 +117,15 @@ namespace Spock
                     if (nbReceived == -1 || nbReceived < BROADCAST_MSG_MIN_SIZE) // Error receiving the datagram
                         continue;
 
-                    String msg = new string(Encoding.UTF8.GetChars(buffer));
-                    Debug.Print("\nReceived data: " + msg + " for " + nbReceived + " B");
+                    string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
+                    //String msg = new string(Encoding.UTF8.GetChars(buffer));
+                    //Debug.Print("\nReceived data: " + msg + " for " + nbReceived + " B");
+
                     switch (buffer[0])
                     {
                         // Someone asks for a type of object
                         case UDP_COMMAND_ASKSFOR:
                             {
-                                string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
                                 string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
                                 Debug.Print(IP + " asks for the type " + type);
                                 lock (typeToRemoteSubscriberLock)
@@ -136,20 +146,30 @@ namespace Spock
                         // Someone offers a type of object
                         case UDP_COMMAND_OFFERS:
                             {
-                                string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
-                                string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
-                                Debug.Print(IP + " offers the type " + type);
+                                string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+                                Debug.Print(IP + " offers the type " + typeName);
                                 lock (typeToLocalSubscriberCountLock)
                                 {
-                                    object count = typeToLocalSubscriberCount[type];
+                                    object count = typeToLocalSubscriberCount[typeName];
                                     if (count != null && (int)count > 0)
                                     {
-                                        Debug.Print("We'll accept " + type);
-                                        sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(type));
+                                        Debug.Print("We'll accept " + typeName);
+                                        sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
                                     }
                                     else
-                                        Debug.Print("We don't need " + type);
+                                        Debug.Print("We don't need " + typeName);
                                 }
+                                break;
+                            }
+
+                        case UDP_COMMAND_DONTNEED:
+                            {
+                                string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+                                lock (typeToRemoteSubscriberLock)
+                                {
+                                    ((ArrayList)typeToRemoteSubscriber[typeName]).Remove(IP);
+                                }
+                                Debug.Print(IP + " don't need " + typeName + " anymore");
                                 break;
                             }
 
@@ -170,9 +190,9 @@ namespace Spock
 
 
         /**
-         * Listen for a TCP transmission, either a request or an object // TODO
+         * Listen for a TCP transmission, either a request or an object
          */
-        private void listenForRequest()
+        private void listenForTCPRequest()
         {
             Debug.Print("Listening for request");
             while (true)
@@ -216,8 +236,12 @@ namespace Spock
                             // Probably obsolete
                             case TCP_COMMAND_OFFERS_TYPE:   // Someone received our UDP demand and offers us what we need
                                 {
-                                    string type = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
-                                    // TODO : check we still need it
+                                    string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
+                                    lock (typeToLocalSubscriberLock)
+                                    {
+                                        if (((Array)typeToLocalSubscriber[typeName]).Length < 0)
+                                            break;
+                                    }
                                     sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(type));
                                     break;
                                 }
@@ -318,10 +342,21 @@ namespace Spock
          */
         private void sendObject(string destIP, Object o)
         {
-            /*
-            byte[] data = o.serialize(); // ???            
+            // Get the bytes of the serialized object
+            byte[] objectData = new byte[0]; // = o.serialize ??
+
+            // Store the name of the type
+            byte[] typeName = Encoding.UTF8.GetBytes(o.GetType().Name);
+            Debug.Assert(typeName.Length<256); // or increase the size in requests, but 255 should be enough for everyone ;)
+
+            // Package the whole thing
+            byte[] data = new byte[1 + typeName.Length + objectData.Length];
+            data[0] = (byte)typeName.Length;
+            Array.Copy(typeName, 0, data, 1, typeName.Length);
+            Array.Copy(objectData, 0, data, 1+typeName.Length, objectData.Length);
+
+            // And send it
             sendTCPCommand(destIP, TCP_COMMAND_OBJECT, data);
-            */
         }
     }
 }

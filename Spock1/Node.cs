@@ -28,7 +28,7 @@ namespace Spock
         private Hashtable typeToRemoteSubscriber = new Hashtable();
 
         // Dictionary {objectType: [local subscribers]}
-        private readonly object typeToLocalClientSubscriber = new object();
+        private readonly object typeToLocalSubscriberLock = new object();
         private Hashtable typeToLocalSubscriber = new Hashtable();
 
         // Dictionary {objectType: [count of local subscribers]}
@@ -48,7 +48,7 @@ namespace Spock
             Debug.Print("DHCP Enabled: " + net.IsDhcpEnabled);
             Debug.Print("IP Address: " + net.IPAddress);
 
-            Thread listenThread = new Thread(new ThreadStart(listenBroadcast));
+            Thread listenThread = new Thread(new ThreadStart(listenForUDPRequest));
             listenThread.Start();
 
             try
@@ -64,7 +64,7 @@ namespace Spock
             }
 
             Debug.Print("TCP server launched");
-            Thread TCPListenThread = new Thread(new ThreadStart(listenForRequest));
+            Thread TCPListenThread = new Thread(new ThreadStart(listenForTCPRequest));
             TCPListenThread.Start();
         }
 
@@ -103,7 +103,7 @@ namespace Spock
         private void deliverToLocals(Object o)
         {
             string className = o.GetType().Name;
-            lock (typeToLocalClientSubscriber)
+            lock (typeToLocalSubscriberLock)
             {
                 ArrayList localsList = (ArrayList)typeToLocalSubscriber[className];
                 if (localsList == null || localsList.Count == 0)
@@ -161,7 +161,6 @@ namespace Spock
 
         /**
          * We got a new local subscriber for t, we got to ask for some t in the network
-         * TODO
          */
         private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
@@ -173,7 +172,7 @@ namespace Spock
                     typeToLocalSubscriberCount[t.Name] = 1;
             }
 
-            //broadcast(Encoding.UTF8.GetBytes(t.GetType().Name));
+            broadcast(UDP_COMMAND_ASKSFOR, Encoding.UTF8.GetBytes(t.Name));
         }
 
 
@@ -182,7 +181,7 @@ namespace Spock
          */
         private void locallySubscribe(ISubscriber subscriber, Type t)
         {
-            lock (typeToLocalClientSubscriber)
+            lock (typeToLocalSubscriberLock)
             {
                 ArrayList currentClients = (ArrayList)typeToLocalSubscriber[t.Name];
 
@@ -198,11 +197,10 @@ namespace Spock
 
         /**
          * If only subscriber asks for t, we need to tell the network it's over for us
-         * TODO
          */
         private void remotelyUnsubscribe(ISubscriber subscriber, Type t)
         {
-            // TODO
+            broadcast(UDP_COMMAND_DONTNEED, Encoding.UTF8.GetBytes(t.Name));
         }
 
 
@@ -212,7 +210,7 @@ namespace Spock
          */
         private void locallyUnsubscribe(ISubscriber subscriber, Type t)
         {
-            lock (typeToLocalClientSubscriber)
+            lock (typeToLocalSubscriberLock)
             {
                 ((ArrayList)typeToLocalSubscriber[t.Name]).Remove(subscriber);
             }
