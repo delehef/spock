@@ -258,7 +258,7 @@ namespace Spock
                                 }
 
                             default:
-                                Debug.Print("Received unknown TCP command : " + msg[0]);
+                                Debug.Print("Unknown TCP command received: " + msg[0]);
                                 break;
                         }
 
