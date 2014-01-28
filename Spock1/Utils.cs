@@ -1,3 +1,4 @@
+#if MF
 //
 // Copyright 2011-2012 Antao Almada
 //
@@ -504,3 +505,4 @@ namespace Spock
 
     }
 }
+#endif

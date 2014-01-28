@@ -4,11 +4,15 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Collections;
+#if MF
 using Microsoft.SPOT;
 using Microsoft.SPOT.Hardware;
 using SecretLabs.NETMF.Hardware;
 using SecretLabs.NETMF.Hardware.Netduino;
 using Microsoft.SPOT.Net.NetworkInformation;
+#else
+using System.Net.NetworkInformation;
+#endif
 using System.Diagnostics;
 
 namespace Spock
@@ -55,8 +59,14 @@ namespace Spock
             try
             {
                 byte[] data = new byte[BROADCAST_MSG_HEADER_SIZE + payload.Length];
+#if MF
                 byte[] IPbytes = IPAddress.Parse(NetworkInterface.GetAllNetworkInterfaces()[0].IPAddress).GetAddressBytes();
-                Debug.Assert(IPbytes.Length == 4);
+#else
+				var mainNic = NetworkInterface.GetAllNetworkInterfaces()[1]; // TODO we probably won't always use only the first one (0 is lo)
+				Debug.Print(mainNic.GetIPProperties().UnicastAddresses[0].Address.ToString());
+				byte[] IPbytes = mainNic.GetIPProperties().UnicastAddresses[0].Address.GetAddressBytes();
+#endif
+                Debug.Assert(IPbytes.Length == 4, "There is no 4 bytes in our IP address: " + IPbytes.Length);
 
                 data[0] = op;                                                               // Set the opcode
                 Array.Copy(IPbytes, 0, data, 1, IPbytes.Length);                            // Set the IP
@@ -167,7 +177,9 @@ namespace Spock
                                 string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
                                 lock (typeToRemoteSubscriberLock)
                                 {
-                                    ((ArrayList)typeToRemoteSubscriber[typeName]).Remove(IP);
+									ArrayList remoteSubscribers = (ArrayList)typeToRemoteSubscriber[typeName];
+									if (remoteSubscribers != null)
+                                    	remoteSubscribers.Remove(IP);
                                 }
                                 Debug.Print(IP + " don't need " + typeName + " anymore");
                                 break;
@@ -206,7 +218,11 @@ namespace Spock
                         IPEndPoint clientIP = clientSocket.RemoteEndPoint as IPEndPoint;
 
                         // Read the message size
-                        int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)));
+#if MF
+						int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)));
+#else
+						int msgSize = (int)BitConverter.ToUInt32(readExactSize(clientSocket, sizeof(int)), 0);
+#endif
                         Debug.Print("Receiving a message of " + msgSize.ToString() + "B");
 
                         // Read the message itself
@@ -242,7 +258,7 @@ namespace Spock
                                         if (((Array)typeToLocalSubscriber[typeName]).Length < 0)
                                             break;
                                     }
-                                    sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(type));
+                                    sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
                                     break;
                                 }
 

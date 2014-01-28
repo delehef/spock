@@ -1,5 +1,8 @@
 using System;
+#if MF
 using Microsoft.SPOT;
+#endif
+using System.Diagnostics;
 
 namespace Spock
 {
