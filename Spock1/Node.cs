@@ -130,10 +130,11 @@ namespace Spock
          */
         private void deliverToRemotes(object o)
         {
-            string className = o.GetType().Name;
+			string className = o.GetType().Name;
             lock (typeToRemoteSubscriberLock)
             {
                 ArrayList remotesList = (ArrayList)typeToRemoteSubscriber[className];
+				Debug.Print ("Remotes to notify:");
                 if (remotesList != null && remotesList.Count != 0)
                     foreach (string address in remotesList)
                     {
