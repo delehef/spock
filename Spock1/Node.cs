@@ -113,10 +113,8 @@ namespace Spock
             string className = o.GetType().Name;
             lock (typeToLocalSubscriberLock)
             {
-                ArrayList localsList = (ArrayList)typeToLocalSubscriber[className];
-                if (localsList == null || localsList.Count == 0)
-                    Debug.Print("No local cares about your stupid " + className + "!");
-                else
+                ArrayList localsList = (ArrayList)(typeToLocalSubscriber[className]);
+                if (localsList != null && localsList.Count != 0)
                     foreach (ISubscriber s in localsList)
                     {
                         Debug.Print("Notifying a local of a " + className);
@@ -136,9 +134,7 @@ namespace Spock
             lock (typeToRemoteSubscriberLock)
             {
                 ArrayList remotesList = (ArrayList)typeToRemoteSubscriber[className];
-                if (remotesList == null || remotesList.Count == 0)
-                    Debug.Print("No remote cares about your stupid " + className + "!");
-                else
+                if (remotesList != null && remotesList.Count != 0)
                     foreach (string address in remotesList)
                     {
                         Debug.Print("Notifying " + address + " of a " + className);
