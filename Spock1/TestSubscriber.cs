@@ -18,7 +18,7 @@ namespace Spock
                 Debug.Print("Subscribing to string");
                 node.subscribe("".GetType(), this);
 
-                Thread.Sleep(3000);
+                Thread.Sleep(10000);
 
                 Debug.Print("Unsubscribing to string");
                 node.unsubscribe("".GetType(), this);
