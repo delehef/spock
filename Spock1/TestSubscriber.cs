@@ -1,6 +1,9 @@
 using System;
 using System.Threading;
+#if MF
 using Microsoft.SPOT;
+#endif
+using System.Diagnostics;
 
 namespace Spock
 {

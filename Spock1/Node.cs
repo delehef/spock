@@ -4,11 +4,15 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Collections;
+#if MF
 using Microsoft.SPOT;
 using Microsoft.SPOT.Hardware;
 using SecretLabs.NETMF.Hardware;
 using SecretLabs.NETMF.Hardware.Netduino;
 using Microsoft.SPOT.Net.NetworkInformation;
+#else
+using System.Net.NetworkInformation;
+#endif
 using System.Diagnostics;
 
 namespace Spock
@@ -45,8 +49,12 @@ namespace Spock
             Debug.Assert(networkInterfaces[0] != null);
             var net = networkInterfaces[0];
 
+#if MF
             Debug.Print("DHCP Enabled: " + net.IsDhcpEnabled);
             Debug.Print("IP Address: " + net.IPAddress);
+#else
+			Debug.Print("IP Address: " + net.GetPhysicalAddress());
+#endif
 
             Thread listenThread = new Thread(new ThreadStart(listenForUDPRequest));
             listenThread.Start();
