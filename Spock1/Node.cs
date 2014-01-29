@@ -131,16 +131,17 @@ namespace Spock
         private void deliverToRemotes(object o)
         {
 			string className = o.GetType().Name;
+			Debug.Print("out |"+className+"|");
+
             lock (typeToRemoteSubscriberLock)
             {
                 ArrayList remotesList = (ArrayList)typeToRemoteSubscriber[className];
-				Debug.Print ("Remotes to notify:");
-                if (remotesList != null && remotesList.Count != 0)
-                    foreach (string address in remotesList)
-                    {
-                        Debug.Print("Notifying " + address + " of a " + className);
-                        sendObject(address, o);
-                    }
+				if (remotesList != null && remotesList.Count != 0)
+					foreach (string address in remotesList)
+					{
+						Debug.Print("Notifying " + address + " of a " + className);
+						sendObject(address, o);
+					}
             }
         }
 
@@ -151,9 +152,6 @@ namespace Spock
          */
         private void receiveFromLocal(Object o)
         {
-            string className = o.GetType().Name;
-            Debug.Print("We distribute a " + className + " from the local client");
-
             // Transmit to the concerned local...
             deliverToLocals(o);
             // ...then to the concerned remotes
@@ -205,7 +203,7 @@ namespace Spock
          */
         private void remotelyUnsubscribe(ISubscriber subscriber, Type t)
         {
-            broadcast(UDP_COMMAND_DONTNEED, Encoding.UTF8.GetBytes(t.Name));
+            broadcast(UDP_COMMAND_DOESNTNEED, Encoding.UTF8.GetBytes(t.Name));
         }
 
 
