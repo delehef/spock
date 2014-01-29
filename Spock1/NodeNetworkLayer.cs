@@ -13,6 +13,8 @@ using SecretLabs.NETMF.Hardware.Netduino;
 using Microsoft.SPOT.Net.NetworkInformation;
 
 
+
+
 #else
 using System.Net.NetworkInformation;
 #endif
@@ -31,13 +33,19 @@ namespace Spock
 		private const int BROADCAST_MSG_PAYLOAD_OFFSET = 5;
 		private const byte UDP_COMMAND_ASKSFOR = (byte)'A';
 		private const byte UDP_COMMAND_OFFERS = (byte)'O';
-		private const byte UDP_COMMAND_DONTNEED = (byte)'D';
+		private const byte UDP_COMMAND_DOESNTNEED = (byte)'D';
 		private const int TCP_PORT = 4321;
 		private const int TCP_MAX_TRIES = 5;
 		private const int TCP_TIMEOUT = 30000;
 		private const byte TCP_COMMAND_ACCEPT_TYPE = (byte)'A';
 		private const byte TCP_COMMAND_OFFERS_TYPE = (byte)'B';
 		private const byte TCP_COMMAND_OBJECT = (byte)'O';
+#if MF
+		private byte[] ourIP = IPAddress.Parse(NetworkInterface.GetAllNetworkInterfaces()[0].IPAddress).GetAddressBytes();
+#else
+		// TODO we probably won't always use only the first one (0 is lo)
+		private byte[] ourIP = NetworkInterface.GetAllNetworkInterfaces()[1].GetIPProperties().UnicastAddresses[0].Address.GetAddressBytes();
+#endif
 
 		/**
          * Read exactly size bytes from the socket s and returns them
@@ -61,17 +69,10 @@ namespace Spock
 			try
 			{
 				byte[] data = new byte[BROADCAST_MSG_HEADER_SIZE + payload.Length];
-#if MF
-                byte[] IPbytes = IPAddress.Parse(NetworkInterface.GetAllNetworkInterfaces()[0].IPAddress).GetAddressBytes();
-#else
-				var mainNic = NetworkInterface.GetAllNetworkInterfaces()[1]; // TODO we probably won't always use only the first one (0 is lo)
-				Debug.Print(mainNic.GetIPProperties().UnicastAddresses[0].Address.ToString());
-				byte[] IPbytes = mainNic.GetIPProperties().UnicastAddresses[0].Address.GetAddressBytes();
-#endif
-				Debug.Assert(IPbytes.Length == 4, "There is no 4 bytes in our IP address: " + IPbytes.Length);
+				Debug.Assert(ourIP.Length == 4, "There is no 4 bytes in our IP address: " + ourIP.Length);
 
 				data[0] = op;                                                               // Set the opcode
-				Array.Copy(IPbytes, 0, data, 1, IPbytes.Length);                            // Set the IP
+				Array.Copy(ourIP, 0, data, 1, ourIP.Length);                            // Set the IP
 				Array.Copy(payload, 0, data, BROADCAST_MSG_HEADER_SIZE, payload.Length);    // Add the payload
 
 				Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -87,6 +88,7 @@ namespace Spock
 			}
 		}
 
+
 		/**
          * Returns a byte[] containing source[beginning..-1]
          */
@@ -97,6 +99,7 @@ namespace Spock
 			return r;
 		}
 
+
 		/**
          * Returns a byte[] containing source[beginning..end]
          */
@@ -106,6 +109,7 @@ namespace Spock
 			Array.Copy(source, beginning, r, 0, r.Length);
 			return r;
 		}
+
 
 		/**
          * Listen the broadcast requests and process them
@@ -126,6 +130,13 @@ namespace Spock
 					if (nbReceived == -1 || nbReceived < BROADCAST_MSG_MIN_SIZE) // Error receiving the datagram
                         continue;
 
+					// If we have multiple NIC, we don't want to listen to ourselves
+					if (buffer[1] == ourIP[0] && buffer[2] == ourIP[1] && buffer[3] == ourIP[2] && buffer[4] == ourIP[3])
+					{
+						Debug.Print("No use listening to our own broadcast");
+						return;
+					}
+
 					string IP = buffer[1] + "." + buffer[2] + "." + buffer[3] + "." + buffer[4];
 					//String msg = new string(Encoding.UTF8.GetChars(buffer));
 					//Debug.Print("\nReceived data: " + msg + " for " + nbReceived + " B");
@@ -135,8 +146,9 @@ namespace Spock
 					// Someone asks for a type of object
 						case UDP_COMMAND_ASKSFOR:
 							{
-								string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+								string type = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE, nbReceived)));
 								Debug.Print(IP + " asks for the type " + type);
+								Debug.Print("|" + type + "|");
 								lock (typeToRemoteSubscriberLock)
 								{
 									if (typeToRemoteSubscriber[type] == null)
@@ -146,37 +158,38 @@ namespace Spock
 								break;
 							}
 
-					/*
-                        // Someone offers a type of object
-                        case UDP_COMMAND_OFFERS:
-                            {
-                                string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
-                                Debug.Print(IP + " offers the type " + typeName);
-                                lock (typeToRemoteSubscriberLock)
-                                {
-                                    int count = typeToRemoteSubscriber[typeName];
-                                    if (count > 0)
-                                    {
-                                        Debug.Print("We'll accept " + typeName);
-                                        sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
-                                    }
-                                    else
-                                        Debug.Print("We don't need " + typeName);
-                                }
-                                break;
-                            }
-                            */
-
-						case UDP_COMMAND_DONTNEED:
+					
+					// Someone offers a type of object
+						case UDP_COMMAND_OFFERS:
 							{
-								string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE)));
+								string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE, nbReceived)));
+								Debug.Print(IP + " offers the type " + typeName);
 								lock (typeToRemoteSubscriberLock)
 								{
-									ArrayList remoteSubscribers = (ArrayList)typeToRemoteSubscriber[typeName];
-									if (remoteSubscribers != null)
-										remoteSubscribers.Remove(IP);
+									if (typeToLocalSubscriber[typeName] != null)
+									{
+									if (typeToLocalSubscriber[typeName] != null && ((ArrayList)typeToLocalSubscriber[typeName]).Count > 0)
+										{
+											Debug.Print("We'll accept " + typeName);
+											sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
+										}
+										else
+											Debug.Print("We don't need " + typeName);
+									}
 								}
-								Debug.Print(IP + " don't need " + typeName + " anymore");
+								break;
+							}
+
+
+						case UDP_COMMAND_DOESNTNEED:
+							{
+								string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE, nbReceived)));
+								lock (typeToRemoteSubscriberLock)
+								{
+									if (typeToRemoteSubscriber[typeName] != null)
+										((ArrayList)typeToRemoteSubscriber[typeName]).Remove(IP);
+								}
+								Debug.Print(IP + " doesn't need " + typeName + " anymore");
 								break;
 							}
 
@@ -231,29 +244,26 @@ namespace Spock
 									Debug.Print(clientIP + " needs " + type);
 									lock (typeToRemoteSubscriberLock)
 									{
-										ArrayList currentRemotes = (ArrayList)typeToRemoteSubscriber[type];
-
-										if (currentRemotes == null)
-											currentRemotes = new ArrayList();
-										currentRemotes.Add(clientIP);
-
-										typeToRemoteSubscriber[type] = currentRemotes;
+									    if (typeToRemoteSubscriber[type] == null)
+										    typeToRemoteSubscriber[type] = new ArrayList();
+									    ((ArrayList)typeToRemoteSubscriber[type]).Add(clientIP);
 									}
 									break;
 								}
 
-						// Probably obsolete
+								// Probably obsolete
+								/*
 							case TCP_COMMAND_OFFERS_TYPE:   // Someone received our UDP demand and offers us what we need
 								{
 									string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
 									lock (typeToLocalSubscriberLock)
 									{
-										if (((Array)typeToLocalSubscriber[typeName]).Length < 0)
+										if (((ArrayList)typeToLocalSubscriber[typeName]).Count < 0)
 											break;
 									}
 									sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
 									break;
-								}
+								}*/
 
 							case TCP_COMMAND_OBJECT:        // Someone give us an object
 								{

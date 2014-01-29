@@ -23,11 +23,8 @@ namespace Spock
         private static readonly Node instance = new Node();
 
         // MEMBERS
-        // The object waiting to be published
-        private readonly object currentObjectLock = new object();
-        private object currentObject;
 
-        // Dictionary {objectType: [interested remotes]}
+		// Dictionary {objectType: [interested remotes]}
         private readonly object typeToRemoteSubscriberLock = new object();
         private Hashtable typeToRemoteSubscriber = new Hashtable();
 
@@ -50,7 +47,6 @@ namespace Spock
             var net = networkInterfaces[0];
 
 #if MF
-            Debug.Print("DHCP Enabled: " + net.IsDhcpEnabled);
             Debug.Print("IP Address: " + net.IPAddress);
 #else
 			Debug.Print("IP Address: " + net.GetPhysicalAddress());
@@ -131,16 +127,17 @@ namespace Spock
         private void deliverToRemotes(object o)
         {
 			string className = o.GetType().Name;
+			Debug.Print("out |"+className+"|");
+
             lock (typeToRemoteSubscriberLock)
             {
                 ArrayList remotesList = (ArrayList)typeToRemoteSubscriber[className];
-				Debug.Print ("Remotes to notify:");
-                if (remotesList != null && remotesList.Count != 0)
-                    foreach (string address in remotesList)
-                    {
-                        Debug.Print("Notifying " + address + " of a " + className);
-                        sendObject(address, o);
-                    }
+				if (remotesList != null && remotesList.Count != 0)
+					foreach (string address in remotesList)
+					{
+						Debug.Print("Notifying " + address + " of a " + className);
+						sendObject(address, o);
+					}
             }
         }
 
@@ -151,9 +148,6 @@ namespace Spock
          */
         private void receiveFromLocal(Object o)
         {
-            string className = o.GetType().Name;
-            Debug.Print("We distribute a " + className + " from the local client");
-
             // Transmit to the concerned local...
             deliverToLocals(o);
             // ...then to the concerned remotes
@@ -205,7 +199,7 @@ namespace Spock
          */
         private void remotelyUnsubscribe(ISubscriber subscriber, Type t)
         {
-            broadcast(UDP_COMMAND_DONTNEED, Encoding.UTF8.GetBytes(t.Name));
+            broadcast(UDP_COMMAND_DOESNTNEED, Encoding.UTF8.GetBytes(t.Name));
         }
 
 
@@ -230,6 +224,7 @@ namespace Spock
          */
         public void publish(Object o)
         {
+			broadcast(UDP_COMMAND_OFFERS, Encoding.UTF8.GetBytes(o.GetType().Name));
             receiveFromLocal(o);
         }
 
