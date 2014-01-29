@@ -246,33 +246,21 @@ namespace Spock
 									{
 									    if (typeToRemoteSubscriber[type] == null)
 										    typeToRemoteSubscriber[type] = new ArrayList();
-									    ((ArrayList)typeToRemoteSubscriber[type]).Add(clientIP);
+									    
+									    if(!((ArrayList)typeToRemoteSubscriber[type]).Contains(clientIP))
+										    ((ArrayList)typeToRemoteSubscriber[type]).Add(clientIP);
 									}
 									break;
 								}
 
-								// Probably obsolete
-								/*
-							case TCP_COMMAND_OFFERS_TYPE:   // Someone received our UDP demand and offers us what we need
-								{
-									string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
-									lock (typeToLocalSubscriberLock)
-									{
-										if (((ArrayList)typeToLocalSubscriber[typeName]).Count < 0)
-											break;
-									}
-									sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
-									break;
-								}*/
-
 							case TCP_COMMAND_OBJECT:        // Someone give us an object
 								{
-									byte typeStringLen = msg[1];
-									string typeString = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 2, 2 + typeStringLen)));
-									int objectBytesBeginning = typeStringLen + 2;
-									Debug.Print("Receiving an object of type " + typeString);
-									Object o = null; // TODO
-									receiveFromNetwork(o);
+									byte typeNameLen = msg[1];
+									string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 2, 2 + typeNameLen)));
+									int objectBytesBeginning = typeNameLen + 2;
+									Debug.Print("Receiving an object of type " + typeName);
+								    byte[] objectBytes = getSubBytes(msg, objectBytesBeginning);
+									receiveFromNetwork(typeName, objectBytes);
 									break;
 								}
 

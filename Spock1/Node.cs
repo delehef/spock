@@ -90,7 +90,7 @@ namespace Spock
         /**
          * Called when a new object is received from the network
          */
-        private void receiveFromNetwork(Object o)
+        private void receiveFromNetwork(string typeName, byte[] o)
         {
             string className = o.GetType().Name;
             Debug.Print("We juste received a " + className + " from the network");

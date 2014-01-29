@@ -1,18 +1,19 @@
 ﻿<Properties>
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug|x86" />
-  <MonoDevelop.Ide.Workbench ActiveDocument="../Spock1/NodeNetworkLayer.cs">
+  <MonoDevelop.Ide.Workbench ActiveDocument="../Spock1/Node.cs">
     <Files>
-      <File FileName="../Spock1/Node.cs" Line="138" Column="1" />
-      <File FileName="../Spock1/NodeNetworkLayer.cs" Line="136" Column="6" />
-      <File FileName="../Spock1/TestMain.cs" Line="11" Column="54" />
-      <File FileName="../Spock1/TestPublisher.cs" Line="5" Column="26" />
+      <File FileName="../Spock1/Node.cs" Line="97" Column="4" />
+      <File FileName="../Spock1/NodeNetworkLayer.cs" Line="263" Column="25" />
+      <File FileName="../Spock1/TestMain.cs" Line="10" Column="1" />
+      <File FileName="../Spock1/TestPublisher.cs" Line="1" Column="1" />
       <File FileName="../Spock1/TestSubscriber.cs" Line="6" Column="26" />
     </Files>
     <Pads>
       <Pad Id="ProjectPad">
-        <State expanded="True" selected="True">
+        <State expanded="True">
           <Node name="SpockDesktop" expanded="True">
             <Node name="References" expanded="True" />
+            <Node name="Node.cs" selected="True" />
           </Node>
         </State>
       </Pad>
