@@ -23,11 +23,8 @@ namespace Spock
         private static readonly Node instance = new Node();
 
         // MEMBERS
-        // The object waiting to be published
-        private readonly object currentObjectLock = new object();
-        private object currentObject;
 
-        // Dictionary {objectType: [interested remotes]}
+		// Dictionary {objectType: [interested remotes]}
         private readonly object typeToRemoteSubscriberLock = new object();
         private Hashtable typeToRemoteSubscriber = new Hashtable();
 
@@ -50,7 +47,6 @@ namespace Spock
             var net = networkInterfaces[0];
 
 #if MF
-            Debug.Print("DHCP Enabled: " + net.IsDhcpEnabled);
             Debug.Print("IP Address: " + net.IPAddress);
 #else
 			Debug.Print("IP Address: " + net.GetPhysicalAddress());
@@ -228,6 +224,7 @@ namespace Spock
          */
         public void publish(Object o)
         {
+			broadcast(UDP_COMMAND_OFFERS, Encoding.UTF8.GetBytes(o.GetType().Name));
             receiveFromLocal(o);
         }
 

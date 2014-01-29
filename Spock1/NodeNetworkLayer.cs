@@ -166,9 +166,9 @@ namespace Spock
 								Debug.Print(IP + " offers the type " + typeName);
 								lock (typeToRemoteSubscriberLock)
 								{
-									if (typeToRemoteSubscriber[typeName] != null)
+									if (typeToLocalSubscriber[typeName] != null)
 									{
-										if (((ArrayList)typeToRemoteSubscriber[typeName]).Count > 0)
+									if (typeToLocalSubscriber[typeName] != null && ((ArrayList)typeToLocalSubscriber[typeName]).Count > 0)
 										{
 											Debug.Print("We'll accept " + typeName);
 											sendTCPCommand(IP, TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
@@ -244,18 +244,15 @@ namespace Spock
 									Debug.Print(clientIP + " needs " + type);
 									lock (typeToRemoteSubscriberLock)
 									{
-										ArrayList currentRemotes = (ArrayList)typeToRemoteSubscriber[type];
-
-										if (currentRemotes == null)
-											currentRemotes = new ArrayList();
-										currentRemotes.Add(clientIP);
-
-										typeToRemoteSubscriber[type] = currentRemotes;
+									    if (typeToRemoteSubscriber[type] == null)
+										    typeToRemoteSubscriber[type] = new ArrayList();
+									    ((ArrayList)typeToRemoteSubscriber[type]).Add(clientIP);
 									}
 									break;
 								}
 
-						// Probably obsolete
+								// Probably obsolete
+								/*
 							case TCP_COMMAND_OFFERS_TYPE:   // Someone received our UDP demand and offers us what we need
 								{
 									string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(msg, 1)));
@@ -266,7 +263,7 @@ namespace Spock
 									}
 									sendTCPCommand(clientIP.Address.ToString(), TCP_COMMAND_ACCEPT_TYPE, Encoding.UTF8.GetBytes(typeName));
 									break;
-								}
+								}*/
 
 							case TCP_COMMAND_OBJECT:        // Someone give us an object
 								{
