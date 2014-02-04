@@ -1,0 +1,196 @@
+= Spock - Publish/subscribe framework for the Netduino
+
+== Objective
+
+
+The goal of this internship was to develop a middleware allowing
+multiple netduinos devboard to share .NET objects following the
+publish/subscribe model.
+
+The publish/subscribe architecture allows multiple nodes to share data,
+wheter as a transmitter or a receiver.
+
+There are two types of entities in such a system: 
+
+ - *publisher* it can _publish_ data to the system, i.e. send a kind of
+   data to the middleware.
+
+ - *subscriber* it _subscribes_ to a given type of data, and each time
+   the middleware receives a publish request from a publisher, it has to
+   deliver it to each of the subscriber to the type of the data.
+
+Typical representatives of this types of middleware are JMS or RabbitMQ.
+
+
+== Actual work
+
+=== The result
+
+Currently, the middleware offers a meshed network of nodes, each of them
+being publisher, subscriber or both depending of the use of the library
+by the programs running on the board.
+
+There is a singleton instance, which is designed to be thread safe, of
+the `Node` class running on each board, and process publishing and
+subscribing both for program running on the same board as for nodes
+running on other boards connected on an IPv4 network.
+
+
+=== Data transmission
+
+==== The fellowship of the serializaton
+
+During this internship, I had to develop a pubsub middleware intended to
+be used by a lot of netduinos connected together with an IPv4 network,
+exchanging .NET objects.
+
+As the data exchanged are well identified, we first wanted to use a
+http://code.google.com/p/protobuf/[Google protobuf] implementation for
+the .NET framework. Two were usable:
+http://code.google.com/p/protobuf-net/[protobuf-net] and
+http://code.google.com/p/protobuf-csharp-port/[protobuf-csharp-port].
+
+The objectives behind were to use these frameworks first, to
+automatically serialize every .NET object in a byte stream following the
+protobuf specifications, and second, to be able to exchange these datas
+with other programs (possibly in other language) also using the protobuf
+protocol.
+
+==== The two frameworks
+
+However, the netduinos are running the microframework, which is a
+http://www.flickr.com/photos/22221147@N02/2223126904/[clipped, clapped,
+cropped] version of the whole .NET framework.
+
+So, as these frameworks needed whether .NET's `generics` or powerful
+introspection, both of which not being implemented in the
+microframework.
+
+
+==== The return of the Solution
+
+Eventually, we decided to use the classic .NET serialization for the
+exchange of objects between the netduinos and to design a gateway
+between the subnetwork of the netdinos and the subnetwork of the
+machines using the true .NET framework, designed to use the
+`protobuf-net` library to convert serializable objects to
+protobuf-serialized objects.
+
+This is achievable because protobuf-net is able, thanks to its intensive
+use of introspection, to serialize objects to the protobuf protocol on
+the fly, allowing us to easily convert .NET objects.
+
+
+=== Network layer
+
+I wanted to do a framework as resilient as possible and able to support
+random connection or deconnection of the nodes. So, I decided to use
+both the TCP and UDP protocols to reach this goal, the first one for
+autodiscovery and requests, the second one for transmission of the
+objects and peer to peer communications.
+
+==== Configuration
+
+The network layer slightly support customization by modifying the
+constants in `NodeNetworkLayer.cs`. They are :
+
+UDP_PORT:: the port used for UDP communications
+TCP_PORT:: self-explanatory...
+TCP_MAX_TRIES:: the max number of tries when sending something to an
+other node
+TCP_TIMEOUT:: the max delay for trying to establish a TCP communication
+with an other node
+ourIP:: theorically, it is hardcoded to use either the ethernet
+interface on netduino or the second interface on desktop (the first one
+being the local loop), but it could need to be modified for more complex
+layouts.
+
+
+==== UDP usage
+
+As foresaid, UDP is used to the discovery of interesting peers. Why UDP
+? Simply because I need broadcast and TCP only give me uni- and
+multicast (and yet, every device on the route must be compatible with
+it...), so goodbye TCP, welcome UDP.
+
+I'd say that I'm using it a little overwhelmingly, but at least it just
+works.
+
+The method processing UDP connections is `listenForUDPRequests`, in
+`NodeNetworkLayer.cs`.
+
+UDP_COMMAND_ASKSFOR:: First, each time a subscriber subscribes to
+something, it broadcasts an offering datagram. Each node publishing the
+needed kind of data stores the IPv4 address of the broadcaster and will
+send it corresponding data next time one of its publishers delivers it.
+
+UDP_COMMAND_OFFERS:: Also, _each time_ a node receive an object to
+publish, it broadcasts an offer message for two reasons. First, to
+inform subscriber that where whether not interested or not connected at
+the first offer, and second, in the case where previous datagrams where
+lost (UDP... what did you expect ?).
+
+UDP_COMMAND_DOESNTNEED:: Finally, when a node receive an unsubscribe
+request and there is only one local subscriber, it broadcast a datagram
+to let everyone know on the network that it doesn't need this kind of
+objects anymore.
+
+==== TCP usage
+
+The TCP is used whenever we need node to node communication thanks to
+its reliability. More precisely, it is used in two cases.
+
+The method processing TCP connections is `listenForTCPRequests`, in
+`NodeNetworkLayer.cs`.
+
+TCP_COMMAND_ACCEPT_TYPE:: when a node receive the information of the
+presence of an interesting data type over UDP broadcast, it extracts the
+sende IP from the datagram and contact it over TCP to tell it it's
+interested in what it has to offer.
+
+TCP_COMMAND_OBJECT:: whenever a node has to send a serialized object to
+another one, it establishes a TCP connection and send it the object with
+the foresaid opcode.
+
+
+=== The netduino
+
+I wanted to dedicate a paragraph to the devboard, because it was a hell
+of a love-hate relation between the two of us. I'd like to say that I'm
+a Linux/C/C++ guy, so of course, my opinion on the subject is probably
+quite biaised by my habits.
+
+First of all, I have to say that having the comfort of development given
+by the .NET framework was a pleasure. I never used C# before - only Java
+-, but the language in itself, despite a few archaisms (the scope of the
+`case` for instance), was a real pleasure to use and it offered me some
+new concepts existing neither in C++ nor in Java that were nice to use
+(partial classes, properties, automatically generated getters/setters,
+getters/setters directly implemented under the relative attribute, ...).
+
+However, the microframework is something else... the idea is fine, but
+the realization is disappointing. The lack of generics is a shame. I
+mean, I know that C# generics are computed at runtime, but they could
+have implemented generics _à la_ `C++`, with the creation of a class for
+each utilisation of the generic, it would have been a little heabier at
+the compile time, but the programming comfort would have been wonderful.
+
+Secondly, the absence of advanced introspection. Technically, I
+understand better this one because, hey, atmel128 isn't really a power
+beast and we need to run actual programs on the board. But I have to
+confess that I think that removing introspection blows up one of the
+main advantage of managed languages (with memory management, but we're
+responsible adults and we absolutely never have segfaults and memory
+leak, don't we ? ;) over compiled language.
+
+But still, in spite of these deceptions, the microframework offers a
+*huge* library, and it's wonderful (I don't really want to develop a TCP
+stack in C, do you ?). But if the MS guys could just implements a few
+more things (`Decimal`, bits conversion, `TcpListener`, I think it would
+remove this slight taste of "toy framework" and really unleash the full
+power of the board.
+
+////
+compilation:a2x --no-xmllint -fpdf -darticle --dblatex-opts "-P latex.output.revhistory=0" report.txt
+vim: filetype=asciidoc:tw=80
+////

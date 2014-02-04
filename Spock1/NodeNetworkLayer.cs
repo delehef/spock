@@ -44,7 +44,7 @@ namespace Spock
 		private const int TCP_TIMEOUT = 30000;
 
 		private const byte TCP_COMMAND_ACCEPT_TYPE = (byte)'A';
-		private const byte TCP_COMMAND_OFFERS_TYPE = (byte)'B';
+		private const byte TCP_COMMAND_OFFERS_TYPE = (byte)'B'; // unused
 		private const byte TCP_COMMAND_OBJECT = (byte)'O';
 #if MF
 		private byte[] ourIP = IPAddress.Parse(NetworkInterface.GetAllNetworkInterfaces()[0].IPAddress).GetAddressBytes();
