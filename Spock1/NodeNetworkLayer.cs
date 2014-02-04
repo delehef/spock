@@ -22,21 +22,27 @@ using System.Diagnostics;
 
 namespace Spock
 {
+	/**
+	  * This partial of the Node class just implements the networking layer
+	  */
 	public partial class Node
 	{
-		// CONSTANTS
+		// ========== CONSTANTS
 		private const int UDP_PORT = 1234;
+
 		private const int BROADCAST_MSG_MAX_SIZE = 1000;
-		private const int BROADCAST_MSG_HEADER_SIZE = 1 + 4;
-		// 1 + 4 => 1: operation, 4: sender IP
+		private const int BROADCAST_MSG_HEADER_SIZE = 1 + 4; // => 1: operation, 4: sender IP
 		private const int BROADCAST_MSG_MIN_SIZE = BROADCAST_MSG_HEADER_SIZE + 1;
 		private const int BROADCAST_MSG_PAYLOAD_OFFSET = 5;
+
 		private const byte UDP_COMMAND_ASKSFOR = (byte)'A';
 		private const byte UDP_COMMAND_OFFERS = (byte)'O';
 		private const byte UDP_COMMAND_DOESNTNEED = (byte)'D';
+
 		private const int TCP_PORT = 4321;
 		private const int TCP_MAX_TRIES = 5;
 		private const int TCP_TIMEOUT = 30000;
+
 		private const byte TCP_COMMAND_ACCEPT_TYPE = (byte)'A';
 		private const byte TCP_COMMAND_OFFERS_TYPE = (byte)'B';
 		private const byte TCP_COMMAND_OBJECT = (byte)'O';
@@ -61,8 +67,10 @@ namespace Spock
 			return buffer;
 		}
 
+
+
 		/**
-         * Broadcast
+         * UDP broadcast of op ++ payload
          */
 		private void broadcast(byte op, byte[] payload)
 		{
@@ -72,7 +80,7 @@ namespace Spock
 				Debug.Assert(ourIP.Length == 4, "There is no 4 bytes in our IP address: " + ourIP.Length);
 
 				data[0] = op;                                                               // Set the opcode
-				Array.Copy(ourIP, 0, data, 1, ourIP.Length);                            // Set the IP
+				Array.Copy(ourIP, 0, data, 1, ourIP.Length);                                // Set the IP
 				Array.Copy(payload, 0, data, BROADCAST_MSG_HEADER_SIZE, payload.Length);    // Add the payload
 
 				Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -87,6 +95,7 @@ namespace Spock
 				Debug.Print(e.Message);
 			}
 		}
+
 
 
 		/**
@@ -109,6 +118,7 @@ namespace Spock
 			Array.Copy(source, beginning, r, 0, r.Length);
 			return r;
 		}
+
 
 
 		/**
@@ -181,6 +191,7 @@ namespace Spock
 							}
 
 
+					// Someone doesn't need an object anymore
 						case UDP_COMMAND_DOESNTNEED:
 							{
 								string typeName = new String(Encoding.UTF8.GetChars(getSubBytes(buffer, BROADCAST_MSG_HEADER_SIZE, nbReceived)));
@@ -207,12 +218,13 @@ namespace Spock
 			}
 		}
 
+
+
 		/**
          * Listen for a TCP transmission, either a request or an object
          */
 		private void listenForTCPRequest()
 		{
-			Debug.Print("Listening for request");
 			while (true)
 			{
 				try
@@ -268,11 +280,6 @@ namespace Spock
 								Debug.Print("Unknown TCP command received: " + msg[0]);
 								break;
 						}
-
-						//Compose a response
-						Debug.Print("Sending a response");
-						byte[] response = System.Text.Encoding.UTF8.GetBytes("tableau de char");
-						clientSocket.Send(response, response.Length, SocketFlags.None);
 					}
 				}
 				catch (Exception e)
@@ -282,6 +289,8 @@ namespace Spock
 				}
 			}
 		}
+
+
 
 		/**
          * Package the payload then send it to the specified IP on port TCP_PORT
@@ -294,8 +303,8 @@ namespace Spock
 
 			byte[] packet = new byte[sizeof(int) + payload.Length];
 			byte[] sizeBytes = BitConverter.GetBytes(payload.Length);
-			Debug.Assert(sizeBytes.Length == sizeof(int)); // Who knows... anyway, there will be a problem if one of the machines 
-			// has sizeof(int) != sizeof(UInt32), but should'nt be allowed according to MSDN
+			Debug.Assert(sizeBytes.Length == sizeof(int));	// Who knows... anyway, there will be a problem if one of the machines 
+															// has sizeof(int) != sizeof(UInt32), but should'nt be allowed according to MSDN
 
 			Array.Copy(sizeBytes, 0, packet, 0, sizeBytes.Length);              // Add the packet's size...
 			Array.Copy(payload, 0, packet, sizeBytes.Length, payload.Length);   // ...then the packet's payload
@@ -329,6 +338,8 @@ namespace Spock
 			socketSend.Close();
 		}
 
+
+
 		/**
          * Send an operation
          */
@@ -339,6 +350,8 @@ namespace Spock
 			Array.Copy(payload, 0, buffer, 1, payload.Length);
 			sendTCP(destIP, buffer);
 		}
+
+
 
 		/**
          * Send the object o to the remote client at IPAddress

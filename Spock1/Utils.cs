@@ -1,3 +1,4 @@
+// Some binary manipulation used only by the MF (they're already implemented in the whole .NET framework)
 #if MF
 //
 // Copyright 2011-2012 Antao Almada

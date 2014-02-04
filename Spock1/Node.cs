@@ -17,12 +17,14 @@ using System.Diagnostics;
 
 namespace Spock
 {
+	/**
+	  * This partial of the Node class only manage the logical part of the work
+	  */
     public partial class Node
     {
-        // The node singleton for this board
+        // ========== MEMBERS
+        // The node singleton for this netduino
         private static readonly Node instance = new Node();
-
-        // MEMBERS
 
 		// Dictionary {objectType: [interested remotes]}
         private readonly object typeToRemoteSubscriberLock = new object();
@@ -37,9 +39,10 @@ namespace Spock
         private Hashtable typeToLocalSubscriberCount = new Hashtable();         // Useless ?
 
         Socket socketSend;     // used to send requests or objects over TCP
-        Socket socketReceive;  // used to receive requests or objects
+        Socket socketReceive;  // used to receive requests or objects over TCP
 
-        // CONSTRUCTORS
+
+        // ========== CONSTRUCTOR
         public Node()
         {
             var networkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -73,7 +76,7 @@ namespace Spock
         }
 
 
-        // SINGLETON
+        // ========== SINGLETON
         public static Node Instance
         {
             get
@@ -83,10 +86,8 @@ namespace Spock
         }
 
 
-        // IMPLEMENTATION
-        // PRIVATE
-
-
+        // ========== IMPLEMENTATION
+        // ---------- PRIVATE
         /**
          * Called when a new object is received from the network
          */
@@ -122,7 +123,7 @@ namespace Spock
 
 
         /**
-         * Dictribute the object o to all the concerned remotes clients
+         * Distribute the object o to all the concerned remote clients
          */
         private void deliverToRemotes(object o)
         {
@@ -156,10 +157,8 @@ namespace Spock
 
 
 
-
-
         /**
-         * We got a new local subscriber for t, we got to ask for some t in the network
+         * We got a new local subscriber for t, we have to ask for some t in the network
          */
         private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
@@ -175,8 +174,9 @@ namespace Spock
         }
 
 
+
         /**
-         * Take in account a new local subscriber
+         * Take account of a new local subscriber
          */
         private void locallySubscribe(ISubscriber subscriber, Type t)
         {
@@ -217,8 +217,7 @@ namespace Spock
 
 
 
-
-        // PUBLIC
+        // ========== PUBLIC ==========
         /**
          * What to do when a local subscriber publish an object
          */
