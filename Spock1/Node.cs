@@ -241,9 +241,15 @@ namespace Spock
 
         public void unsubscribe(Type t, ISubscriber subscriber)
         {
-            // same as subscribe, but the other way around
-            locallyUnsubscribe(subscriber, t);
-            remotelyUnsubscribe(subscriber, t);
+			lock(typeToLocalSubscriberLock)
+			{
+			    if ((ArrayList)typeToLocalSubscriber[type].Count <= 1)
+			    {
+			        // same as subscribe, but the other way around
+			        locallyUnsubscribe(subscriber, t);
+			        remotelyUnsubscribe(subscriber, t);
+			    }
+			}
         }
     }
 }
