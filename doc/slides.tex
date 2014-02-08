@@ -1,0 +1,117 @@
+\documentclass{beamer}
+\usepackage{graphicx}
+\usepackage{minted}
+\usepackage{graphicx}
+
+\usetheme{Antibes}
+\beamertemplatenavigationsymbolsempty
+\title{Publish-subscribe middleware for netduinos mesh}
+\subtitle{Softwarepraktikum - research project}
+\author{Franklin \textsc{Delehelle}}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\section{Presentation}
+
+
+\section{Implementation}
+\subsection{Logic layer}
+\subsubsection{Serialization}
+\begin{frame}
+  \begin{block}{First idea: use protobuf for the serialization}
+    \begin{itemize}
+    \item two candidates: protobuf-net and protobuf-csharp-port
+    \item no generics on the .NET MF
+    \item no advanced introspection on the .NET MF
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Actual implementation: use .NET MF's serialization}
+    \begin{itemize}
+    \item works ``out of the box''
+    \item incompatible with protobuf
+    \item incompatible with standard C\# serialization
+    \item $\Rightarrow$ needs a proxy (.NET MF's serialization $\leftrightarrow$ protobuf) to share data with extern applications
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+
+\subsection{Networking layer}
+\subsubsection{Networking layout}
+\begin{frame}
+  INSERT NICE DRAWING HERE
+\end{frame}
+
+\subsubsection{UDP usage}
+\begin{frame}
+  \begin{description}
+  \item[UDP\_COMMAND\_ASKSFOR]
+    First, each time a subscriber subscribes to something, it broadcasts an offering datagram. Each node publishing the needed kind of data stores the IPv4 address of the broadcaster and will send it corresponding data next time one of its publishers delivers it.
+
+  \item[UDP\_COMMAND\_OFFERS]
+    Also, \emph{each time} a node receive an object to publish, it broadcasts
+    an offer message for two reasons. First, to inform subscriber that where whether not interested or not connected at
+    the first offer, and second, in the case where previous datagrams were lost.
+
+  \item[UDP\_COMMAND\_DOESNTNEED]
+    Finally, when a node receive an unsubscribe request and there is only
+    one local subscriber, it broadcast a datagram to let everyone know on the network that it doesn't need this kind of
+    objects anymore.
+  \end{description}
+\end{frame}
+
+\subsubsection{TCP usage}
+\begin{frame}
+  \begin{description}
+  \item[TCP\_COMMAND\_ACCEPT\_TYPE]
+    when a node receive the information of the presence of an interesting data type over UDP broadcast, it extracts the sender IP from the datagram and contact it over TCP to tell it it's interested in what it has to offer.
+
+  \item[TCP\_COMMAND\_OBJECT ]
+    whenever a node has to send a serialized object to another one, it establishes a TCP connection and send it the object with the foresaid opcode.
+  \end{description}
+\end{frame}
+
+\subsubsection{Networking example}
+\begin{frame}
+
+\end{frame}
+
+
+\section{Usage}
+\subsection{As a publisher}
+\begin{frame}[fragile]
+  \begin{minted}[mathescape,numbersep=5pt,fontsize=\footnotesize,frame=lines,framesep=2mm]{csharp}
+    Node node = Node.Instance; // Get the singleton
+    node.publish("hello, world"); // publish something
+  \end{minted}
+\end{frame}
+
+\subsection{As a subscriber}
+\begin{frame}[fragile]
+  \begin{minted}[mathescape,numbersep=5pt,fontsize=\footnotesize,frame=lines,framesep=2mm]{csharp}
+    public void receive(Object o)
+    {
+      Debug.Print("Receiving an object of type " + o.GetType().Name);
+    }
+
+    [...]
+
+    Node node = Node.Instance;
+
+    Debug.Print("Subscribing to string");
+    node.subscribe("".GetType(), this);
+
+    Thread.Sleep(3000);
+
+    Debug.Print("Unsubscribing to string");
+    node.unsubscribe("".GetType(), this);
+  \end{minted}
+\end{frame}
+
+\end{document}
