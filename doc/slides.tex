@@ -17,6 +17,11 @@
 \end{frame}
 
 \section{Presentation}
+\begin{frame}
+\begin{center}
+{\Large {\bfseries Goal}\\~\\~\\ exchange C\# objects easily as possible between netduinos on the same network}
+\end{center}
+\end{frame}
 
 
 \section{Implementation}
@@ -26,16 +31,18 @@
   \begin{block}{First idea: use protobuf for the serialization}
     \begin{itemize}
     \item two candidates: protobuf-net and protobuf-csharp-port
+\pause
     \item no generics on the .NET MF
     \item no advanced introspection on the .NET MF
     \end{itemize}
   \end{block}
-
+\pause
   \begin{block}{Actual implementation: use .NET MF's serialization}
     \begin{itemize}
     \item works ``out of the box''
     \item incompatible with protobuf
     \item incompatible with standard C\# serialization
+\pause
     \item $\Rightarrow$ needs a proxy (.NET MF's serialization $\leftrightarrow$ protobuf) to share data with extern applications
     \end{itemize}
   \end{block}
@@ -45,7 +52,10 @@
 \subsection{Networking layer}
 \subsubsection{Networking layout}
 \begin{frame}
-  INSERT NICE DRAWING HERE
+\begin{center}
+\includegraphics[scale=0.5]{mesh.pdf} \\~\vspace{0.5cm}\\
+{Example of a meshed repartition}
+\end{center}
 \end{frame}
 
 \subsubsection{UDP usage}
@@ -53,12 +63,12 @@
   \begin{description}
   \item[UDP\_COMMAND\_ASKSFOR]
     First, each time a subscriber subscribes to something, it broadcasts an offering datagram. Each node publishing the needed kind of data stores the IPv4 address of the broadcaster and will send it corresponding data next time one of its publishers delivers it.
-
+\pause
   \item[UDP\_COMMAND\_OFFERS]
     Also, \emph{each time} a node receive an object to publish, it broadcasts
     an offer message for two reasons. First, to inform subscriber that where whether not interested or not connected at
     the first offer, and second, in the case where previous datagrams were lost.
-
+\pause
   \item[UDP\_COMMAND\_DOESNTNEED]
     Finally, when a node receive an unsubscribe request and there is only
     one local subscriber, it broadcast a datagram to let everyone know on the network that it doesn't need this kind of
@@ -71,7 +81,7 @@
   \begin{description}
   \item[TCP\_COMMAND\_ACCEPT\_TYPE]
     when a node receive the information of the presence of an interesting data type over UDP broadcast, it extracts the sender IP from the datagram and contact it over TCP to tell it it's interested in what it has to offer.
-
+\pause
   \item[TCP\_COMMAND\_OBJECT ]
     whenever a node has to send a serialized object to another one, it establishes a TCP connection and send it the object with the foresaid opcode.
   \end{description}
@@ -79,7 +89,10 @@
 
 \subsubsection{Networking example}
 \begin{frame}
-
+  \begin{center}
+    \includegraphics[scale=0.7]{graph.pdf} \\ \vspace{1cm}
+    \emph{UDP datagrams are in dashed arrows, TCP transmissions in plain}
+  \end{center}
 \end{frame}
 
 
@@ -114,4 +127,10 @@
   \end{minted}
 \end{frame}
 
+\section{}
+\begin{frame}
+\begin{center}
+{\Large Thanks for watching!}
+\end{center}
+\end{frame}
 \end{document}

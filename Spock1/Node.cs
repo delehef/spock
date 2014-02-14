@@ -91,13 +91,13 @@ namespace Spock
         /**
          * Called when a new object is received from the network
          */
-        private void receiveFromNetwork(string typeName, byte[] o)
+        private void receiveFromNetwork(string typeName, byte[] data)
         {
-            string className = o.GetType().Name;
-            Debug.Print("We juste received a " + className + " from the network");
+            Debug.Print("We juste received a " + typeName + " from the network");
 
             // Transmit to the concerned locals
-            deliverToLocals(o);
+            Object received = Reflection.Deserialize(data, Type.GetType(typeName));
+            deliverToLocals(received);
         }
 
 
@@ -243,7 +243,7 @@ namespace Spock
         {
 			lock(typeToLocalSubscriberLock)
 			{
-			    if ((ArrayList)typeToLocalSubscriber[type].Count <= 1)
+			    if (((ArrayList)typeToLocalSubscriber[t.Name]).Count <= 1)
 			    {
 			        // same as subscribe, but the other way around
 			        locallyUnsubscribe(subscriber, t);

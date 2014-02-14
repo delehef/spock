@@ -11,14 +11,11 @@ using Microsoft.SPOT.Hardware;
 using SecretLabs.NETMF.Hardware;
 using SecretLabs.NETMF.Hardware.Netduino;
 using Microsoft.SPOT.Net.NetworkInformation;
-
-
-
-
 #else
 using System.Net.NetworkInformation;
 #endif
 using System.Diagnostics;
+using System.Reflection;
 
 namespace Spock
 {
@@ -355,15 +352,19 @@ namespace Spock
 
 		/**
          * Send the object o to the remote client at IPAddress
-         * TODO
          */
 		private void sendObject(string destIP, Object o)
 		{
 			// Get the bytes of the serialized object
-			byte[] objectData = new byte[0]; // = o.serialize ??
+#if MF
+            byte[] objectData = Microsoft.SPOT.Reflection.Serialize(o, o.GetType());
+#else
+            byte[] objectData = Reflection.Serialize(o, o.GetType());
+#endif
 
-			// Store the name of the type
-			byte[] typeName = Encoding.UTF8.GetBytes(o.GetType().Name);
+            // Store the name of the type
+            string assemblyName = Assembly.GetAssembly(o.GetType()).FullName;
+			byte[] typeName = Encoding.UTF8.GetBytes(o.GetType().Name + ", " + assemblyName);
 			Debug.Assert(typeName.Length < 256); // or increase the size in requests, but 255 should be enough for everyone ;)
 
 			// Package the whole thing
