@@ -33,6 +33,7 @@ namespace Spock
         public void receive(Object o)
         {
             Debug.Print("Receiving an object of type " + o.GetType().Name);
+            Debug.Print("Result: " + (string)o);
         }
     }
 }

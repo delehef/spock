@@ -158,11 +158,6 @@ namespace Spock
          */
         private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
-            lock (typeToLocalSubscriber)
-            {
-                ((ArrayList)typeToLocalSubscriber[t.Name]).Add(subscriber);
-            }
-
             broadcast(UDP_COMMAND_ASKSFOR, Encoding.UTF8.GetBytes(t.Name));
         }
 
