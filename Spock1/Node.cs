@@ -34,10 +34,6 @@ namespace Spock
         private readonly object typeToLocalSubscriberLock = new object();
         private Hashtable typeToLocalSubscriber = new Hashtable();
 
-        // Dictionary {objectType: [count of local subscribers]}
-        private readonly object typeToLocalSubscriberCountLock = new object();
-        private Hashtable typeToLocalSubscriberCount = new Hashtable();         // Useless ?
-
         Socket socketSend;     // used to send requests or objects over TCP
         Socket socketReceive;  // used to receive requests or objects over TCP
 
@@ -162,12 +158,9 @@ namespace Spock
          */
         private void remotelySubscribe(ISubscriber subscriber, Type t)
         {
-            lock (typeToLocalSubscriberCountLock)
+            lock (typeToLocalSubscriber)
             {
-                if (typeToLocalSubscriberCount[t.Name] != null)
-                    typeToLocalSubscriberCount[t.Name] = (int)typeToLocalSubscriberCount[t.Name] + 1;
-                else
-                    typeToLocalSubscriberCount[t.Name] = 1;
+                ((ArrayList)typeToLocalSubscriber[t.Name]).Add(subscriber);
             }
 
             broadcast(UDP_COMMAND_ASKSFOR, Encoding.UTF8.GetBytes(t.Name));
